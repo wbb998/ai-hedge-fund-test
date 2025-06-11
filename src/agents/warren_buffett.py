@@ -1,184 +1,231 @@
+# 导入代理状态和推理显示功能
 from src.graph.state import AgentState, show_agent_reasoning
+# 导入LangChain聊天提示模板
 from langchain_core.prompts import ChatPromptTemplate
+# 导入LangChain核心消息类
 from langchain_core.messages import HumanMessage
+# 导入Pydantic数据模型
 from pydantic import BaseModel
+# 导入JSON处理模块
 import json
+# 导入类型注解
 from typing_extensions import Literal
+# 导入金融数据API工具
 from src.tools.api import get_financial_metrics, get_market_cap, search_line_items
+# 导入大语言模型调用工具
 from src.utils.llm import call_llm
+# 导入进度跟踪工具
 from src.utils.progress import progress
 
 
 class WarrenBuffettSignal(BaseModel):
-    signal: Literal["bullish", "bearish", "neutral"]
-    confidence: float
-    reasoning: str
+    """巴菲特分析信号数据模型"""
+    signal: Literal["bullish", "bearish", "neutral"]  # 信号类型：看涨、看跌、中性
+    confidence: float  # 置信度
+    reasoning: str     # 推理过程
 
 
 def warren_buffett_agent(state: AgentState):
-    """Analyzes stocks using Buffett's principles and LLM reasoning."""
+    """使用巴菲特投资原则和大语言模型推理分析股票
+    
+    Args:
+        state: 包含股票代码和结束日期的代理状态
+        
+    Returns:
+        dict: 更新后的状态，包含巴菲特分析结果消息
+    """
     data = state["data"]
-    end_date = data["end_date"]
-    tickers = data["tickers"]
+    end_date = data["end_date"]      # 分析结束日期
+    tickers = data["tickers"]        # 要分析的股票代码列表
 
-    # Collect all analysis for LLM reasoning
-    analysis_data = {}
-    buffett_analysis = {}
+    # 收集所有分析数据用于大语言模型推理
+    analysis_data = {}     # 存储分析数据
+    buffett_analysis = {}  # 存储巴菲特分析结果
 
     for ticker in tickers:
-        progress.update_status("warren_buffett_agent", ticker, "Fetching financial metrics")
-        # Fetch required data - request more periods for better trend analysis
+        # 更新进度状态：获取财务指标
+        progress.update_status("warren_buffett_agent", ticker, "获取财务指标")
+        # 获取所需数据 - 请求更多期间以便更好地进行趋势分析
         metrics = get_financial_metrics(ticker, end_date, period="ttm", limit=10)
 
-        progress.update_status("warren_buffett_agent", ticker, "Gathering financial line items")
+        # 更新进度状态：收集财务科目
+        progress.update_status("warren_buffett_agent", ticker, "收集财务科目")
+        # 搜索特定的财务科目数据
         financial_line_items = search_line_items(
             ticker,
             [
-                "capital_expenditure",
-                "depreciation_and_amortization",
-                "net_income",
-                "outstanding_shares",
-                "total_assets",
-                "total_liabilities",
-                "shareholders_equity",
-                "dividends_and_other_cash_distributions",
-                "issuance_or_purchase_of_equity_shares",
-                "gross_profit",
-                "revenue",
-                "free_cash_flow",
+                "capital_expenditure",                        # 资本支出
+                "depreciation_and_amortization",              # 折旧和摊销
+                "net_income",                                 # 净收入
+                "outstanding_shares",                         # 流通股数
+                "total_assets",                               # 总资产
+                "total_liabilities",                          # 总负债
+                "shareholders_equity",                        # 股东权益
+                "dividends_and_other_cash_distributions",     # 股息和其他现金分配
+                "issuance_or_purchase_of_equity_shares",      # 股权发行或回购
+                "gross_profit",                               # 毛利润
+                "revenue",                                    # 收入
+                "free_cash_flow",                             # 自由现金流
             ],
             end_date,
-            period="ttm",
-            limit=10,
+            period="ttm",  # 过去十二个月数据
+            limit=10,       # 限制10个期间
         )
 
-        progress.update_status("warren_buffett_agent", ticker, "Getting market cap")
-        # Get current market cap
+        # 更新进度状态：获取市值
+        progress.update_status("warren_buffett_agent", ticker, "获取市值")
+        # 获取当前市值
         market_cap = get_market_cap(ticker, end_date)
 
-        progress.update_status("warren_buffett_agent", ticker, "Analyzing fundamentals")
-        # Analyze fundamentals
+        # 更新进度状态：分析基本面
+        progress.update_status("warren_buffett_agent", ticker, "分析基本面")
+        # 分析基本面指标
         fundamental_analysis = analyze_fundamentals(metrics)
 
-        progress.update_status("warren_buffett_agent", ticker, "Analyzing consistency")
+        # 更新进度状态：分析一致性
+        progress.update_status("warren_buffett_agent", ticker, "分析一致性")
+        # 分析财务表现的一致性
         consistency_analysis = analyze_consistency(financial_line_items)
 
-        progress.update_status("warren_buffett_agent", ticker, "Analyzing competitive moat")
+        # 更新进度状态：分析竞争护城河
+        progress.update_status("warren_buffett_agent", ticker, "分析竞争护城河")
+        # 分析公司的竞争优势
         moat_analysis = analyze_moat(metrics)
 
-        progress.update_status("warren_buffett_agent", ticker, "Analyzing pricing power")
+        # 更新进度状态：分析定价能力
+        progress.update_status("warren_buffett_agent", ticker, "分析定价能力")
+        # 分析公司的定价能力
         pricing_power_analysis = analyze_pricing_power(financial_line_items, metrics)
 
-        progress.update_status("warren_buffett_agent", ticker, "Analyzing book value growth")
+        # 更新进度状态：分析账面价值增长
+        progress.update_status("warren_buffett_agent", ticker, "分析账面价值增长")
+        # 分析账面价值的增长情况
         book_value_analysis = analyze_book_value_growth(financial_line_items)
 
-        progress.update_status("warren_buffett_agent", ticker, "Analyzing management quality")
+        # 更新进度状态：分析管理层质量
+        progress.update_status("warren_buffett_agent", ticker, "分析管理层质量")
+        # 分析管理层的质量
         mgmt_analysis = analyze_management_quality(financial_line_items)
 
-        progress.update_status("warren_buffett_agent", ticker, "Calculating intrinsic value")
+        # 更新进度状态：计算内在价值
+        progress.update_status("warren_buffett_agent", ticker, "计算内在价值")
+        # 计算股票的内在价值
         intrinsic_value_analysis = calculate_intrinsic_value(financial_line_items)
 
-        # Calculate total score without circle of competence (LLM will handle that)
+        # 计算总分（不包括能力圈，由大语言模型处理）
         total_score = (
-            fundamental_analysis["score"] + 
-            consistency_analysis["score"] + 
-            moat_analysis["score"] + 
-            mgmt_analysis["score"] +
-            pricing_power_analysis["score"] + 
-            book_value_analysis["score"]
+            fundamental_analysis["score"] +     # 基本面分析得分
+            consistency_analysis["score"] +    # 一致性分析得分
+            moat_analysis["score"] +           # 护城河分析得分
+            mgmt_analysis["score"] +           # 管理层质量得分
+            pricing_power_analysis["score"] +  # 定价能力得分
+            book_value_analysis["score"]       # 账面价值增长得分
         )
         
-        # Update max possible score calculation
+        # 更新最大可能得分计算
         max_possible_score = (
-            10 +  # fundamental_analysis (ROE, debt, margins, current ratio)
-            moat_analysis["max_score"] + 
-            mgmt_analysis["max_score"] +
-            5 +   # pricing_power (0-5)
-            5     # book_value_growth (0-5)
+            10 +  # 基本面分析（ROE、债务、利润率、流动比率）
+            moat_analysis["max_score"] +       # 护城河最大得分
+            mgmt_analysis["max_score"] +       # 管理层质量最大得分
+            5 +   # 定价能力（0-5分）
+            5     # 账面价值增长（0-5分）
         )
 
-        # Add margin of safety analysis if we have both intrinsic value and current price
+        # 如果同时有内在价值和当前价格，则添加安全边际分析
         margin_of_safety = None
         intrinsic_value = intrinsic_value_analysis["intrinsic_value"]
         if intrinsic_value and market_cap:
+            # 计算安全边际：(内在价值 - 市值) / 市值
             margin_of_safety = (intrinsic_value - market_cap) / market_cap
 
-        # Combine all analysis results for LLM evaluation
+        # 合并所有分析结果用于大语言模型评估
         analysis_data[ticker] = {
-            "ticker": ticker,
-            "score": total_score,
-            "max_score": max_possible_score,
-            "fundamental_analysis": fundamental_analysis,
-            "consistency_analysis": consistency_analysis,
-            "moat_analysis": moat_analysis,
-            "pricing_power_analysis": pricing_power_analysis,
-            "book_value_analysis": book_value_analysis,
-            "management_analysis": mgmt_analysis,
-            "intrinsic_value_analysis": intrinsic_value_analysis,
-            "market_cap": market_cap,
-            "margin_of_safety": margin_of_safety,
+            "ticker": ticker,                                    # 股票代码
+            "score": total_score,                               # 总得分
+            "max_score": max_possible_score,                    # 最大可能得分
+            "fundamental_analysis": fundamental_analysis,       # 基本面分析
+            "consistency_analysis": consistency_analysis,       # 一致性分析
+            "moat_analysis": moat_analysis,                     # 护城河分析
+            "pricing_power_analysis": pricing_power_analysis,   # 定价能力分析
+            "book_value_analysis": book_value_analysis,         # 账面价值分析
+            "management_analysis": mgmt_analysis,               # 管理层分析
+            "intrinsic_value_analysis": intrinsic_value_analysis, # 内在价值分析
+            "market_cap": market_cap,                           # 市值
+            "margin_of_safety": margin_of_safety,               # 安全边际
         }
 
-        progress.update_status("warren_buffett_agent", ticker, "Generating Warren Buffett analysis")
+        # 更新进度状态：生成巴菲特分析
+        progress.update_status("warren_buffett_agent", ticker, "生成巴菲特分析")
+        # 生成巴菲特风格的分析输出
         buffett_output = generate_buffett_output(
             ticker=ticker,
             analysis_data=analysis_data,
             state=state,
         )
 
-        # Store analysis in consistent format with other agents
+        # 以与其他代理一致的格式存储分析结果
         buffett_analysis[ticker] = {
-            "signal": buffett_output.signal,
-            "confidence": buffett_output.confidence,
-            "reasoning": buffett_output.reasoning,
+            "signal": buffett_output.signal,        # 信号类型
+            "confidence": buffett_output.confidence, # 置信度
+            "reasoning": buffett_output.reasoning,   # 推理过程
         }
 
-        progress.update_status("warren_buffett_agent", ticker, "Done", analysis=buffett_output.reasoning)
+        # 更新进度状态为完成
+        progress.update_status("warren_buffett_agent", ticker, "完成", analysis=buffett_output.reasoning)
 
-    # Create the message
+    # 创建消息
     message = HumanMessage(content=json.dumps(buffett_analysis), name="warren_buffett_agent")
 
-    # Show reasoning if requested
+    # 如果请求显示推理过程，则显示
     if state["metadata"]["show_reasoning"]:
-        show_agent_reasoning(buffett_analysis, "Warren Buffett Agent")
+        show_agent_reasoning(buffett_analysis, "巴菲特代理")
 
-    # Add the signal to the analyst_signals list
+    # 将信号添加到分析师信号列表中
     state["data"]["analyst_signals"]["warren_buffett_agent"] = buffett_analysis
 
-    progress.update_status("warren_buffett_agent", None, "Done")
+    # 更新进度状态为完成
+    progress.update_status("warren_buffett_agent", None, "完成")
 
+    # 返回更新后的状态
     return {"messages": [message], "data": state["data"]}
 
 
 def analyze_fundamentals(metrics: list) -> dict[str, any]:
-    """Analyze company fundamentals based on Buffett's criteria."""
+    """基于巴菲特标准分析公司基本面
+    
+    Args:
+        metrics: 财务指标列表
+        
+    Returns:
+        dict: 包含得分和详细信息的分析结果
+    """
     if not metrics:
-        return {"score": 0, "details": "Insufficient fundamental data"}
+        return {"score": 0, "details": "基本面数据不足"}
 
-    latest_metrics = metrics[0]
+    latest_metrics = metrics[0]  # 获取最新的财务指标
 
-    score = 0
-    reasoning = []
+    score = 0      # 初始化得分
+    reasoning = [] # 初始化推理列表
 
-    # Check ROE (Return on Equity)
-    if latest_metrics.return_on_equity and latest_metrics.return_on_equity > 0.15:  # 15% ROE threshold
+    # 检查ROE（股本回报率）
+    if latest_metrics.return_on_equity and latest_metrics.return_on_equity > 0.15:  # 15%的ROE阈值
         score += 2
-        reasoning.append(f"Strong ROE of {latest_metrics.return_on_equity:.1%}")
+        reasoning.append(f"强劲的ROE为{latest_metrics.return_on_equity:.1%}")
     elif latest_metrics.return_on_equity:
-        reasoning.append(f"Weak ROE of {latest_metrics.return_on_equity:.1%}")
+        reasoning.append(f"较弱的ROE为{latest_metrics.return_on_equity:.1%}")
     else:
-        reasoning.append("ROE data not available")
+        reasoning.append("ROE数据不可用")
 
-    # Check Debt to Equity
+    # 检查债务股权比
     if latest_metrics.debt_to_equity and latest_metrics.debt_to_equity < 0.5:
         score += 2
-        reasoning.append("Conservative debt levels")
+        reasoning.append("保守的债务水平")
     elif latest_metrics.debt_to_equity:
-        reasoning.append(f"High debt to equity ratio of {latest_metrics.debt_to_equity:.1f}")
+        reasoning.append(f"较高的债务股权比为{latest_metrics.debt_to_equity:.1f}")
     else:
-        reasoning.append("Debt to equity data not available")
+        reasoning.append("债务股权比数据不可用")
 
-    # Check Operating Margin
+    # 检查营业利润率
     if latest_metrics.operating_margin and latest_metrics.operating_margin > 0.15:
         score += 2
         reasoning.append("Strong operating margins")
